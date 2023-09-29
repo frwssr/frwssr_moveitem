@@ -16,11 +16,10 @@ if ($CurrentUser->logged_in() && isset($_GET['logout']) && is_numeric($_GET['log
 
 // If the user's logged in, clone item and related indices. Then send them to edit the new item
 if ($CurrentUser->logged_in()) {
-
     try {
         // Will need a form posting to this page with the page ID in a query string named: "id"
         if (!$id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT)):
-             throw new Exception('No valid page ID passed though POST vars');
+            throw new Exception('No valid page ID passed though POST vars');
         endif;
         if (!$itm = filter_input(INPUT_GET, 'itm', FILTER_VALIDATE_INT)):
             throw new Exception('No valid item ID passed though POST vars');
@@ -29,38 +28,54 @@ if ($CurrentUser->logged_in()) {
             throw new Exception('There’s a problem with your moveto ID');
         endif;
         if (isset($_GET['unsetfields']) && !$unsetfieldsInput = filter_input(INPUT_GET, 'unsetfields', FILTER_SANITIZE_STRING)):
-             throw new Exception('There’s a problem with your unsetfields');
+            throw new Exception('There’s a problem with your unsetfields');
         endif;
         if ($unsetfieldsInput):
             $unsetfields = explode(',', $unsetfieldsInput);
+        else:
+            $unsetfields = [];
         endif;
-
+        
         $DB = PerchDB::fetch();
-
+        
         $itemsFactory = new PerchContent_Items();
         /** @var PerchContent_Item $item */
-
+        
         // get details for target region
         $targetdetails = $DB->get_row('SELECT pageID, regionRev FROM ' . PERCH_DB_PREFIX . 'content_regions WHERE regionID = ' . $moveto);
         $target = $itemsFactory->return_flattened_instance($targetdetails);
-
         // get item row related to the itemID/itemRev to move from {PERCH_DB_PREFIX}content_items
         $itemData = $DB->get_row('SELECT itemRowID, itemRev, itemJSON FROM ' . PERCH_DB_PREFIX . 'content_items WHERE itemID = ' . $itm . ' AND itemRev = ( SELECT max(itemRev) FROM ' . PERCH_DB_PREFIX . 'content_items WHERE itemID = ' . $itm . ' )');
-        $item = $itemsFactory->return_flattened_instance($itemData);
+        if ($itemData !== false):
+            $item = $itemsFactory->return_flattened_instance($itemData);
+        else:
+            throw new Exception('Retrieving ' . PERCH_DB_PREFIX . 'content_items failed.');
+        endif;
         // get all index rows related to the itemID/itemRev to move from {PERCH_DB_PREFIX}content_index
         $indexData = $DB->get_rows('SELECT indexID FROM ' . PERCH_DB_PREFIX . 'content_index WHERE itemID = ' . $itm . ' AND itemRev = ' . $item['itemRev']);
-        $indexes = $itemsFactory->return_flattened_instance($indexData);
+        if ($indexData !== false):
+            $indexes = $itemsFactory->return_flattened_instance($indexData);
+        else:
+            throw new Exception('Retrieving ' . PERCH_DB_PREFIX . 'content_index (indexData) failed.');
+        endif;
+        $indexDataToDelete = $DB->get_rows('SELECT indexID FROM ' . PERCH_DB_PREFIX . 'content_index WHERE itemID = ' . $itm . ' AND itemRev NOT IN (' . $item['itemRev'] . ')');
+
+        if ($indexDataToDelete !== false):
+            $indexesToDelete = $itemsFactory->return_flattened_instance($indexDataToDelete);
+        else:
+            throw new Exception('Retrieving ' . PERCH_DB_PREFIX . 'content_index (indexDataToDelete) failed.');
+        endif;
         // change field values as required and insert into {PERCH_DB_PREFIX}content_index
         $update['regionID'] = intval($moveto);
         $update['pageID'] = intval($target['pageID']);
         $update['itemRev'] = intval($target['regionRev']);
         foreach($indexes as $value) {
             // write altered index back to {PERCH_DB_PREFIX}content_index
-            if($DB->update(PERCH_DB_PREFIX . 'content_index', $update, 'indexID', $value['indexID']) === false):
+            $DBupdate = $DB->update(PERCH_DB_PREFIX . 'content_index', $update, 'indexID', $value['indexID']);
+            if($DBupdate === false):
                 throw new Exception('Updating ' . PERCH_DB_PREFIX . 'content_index failed at indexID ' . $value['indexID'] . '.');
             endif;
         }
-            
         if(count($unsetfields)):
             $itemJSON = json_decode($item['itemJSON'], true);
             // updates itemJSON in item if fields to unset were provided
@@ -75,14 +90,15 @@ if ($CurrentUser->logged_in()) {
                 $update['itemJSON'] = json_encode($itemJSON);
             endif;
         endif;
-        
         $update['itemOrder'] = 1000;
         // write altered item back to {PERCH_DB_PREFIX}content_items
-        if($DB->update(PERCH_DB_PREFIX . 'content_items', $update, 'itemRowID', $item['itemRowID']) !== false):
+        $DBupdate = $DB->update(PERCH_DB_PREFIX . 'content_items', $update, 'itemRowID', $item['itemRowID']);
+        if ($DBupdate !== false):
             header("Location: ../../../core/apps/content/edit/?id=" . $moveto);
         else:
             throw new Exception('Updating ' . PERCH_DB_PREFIX . 'content_items failed.');
         endif;
+
     } catch (Exception $e) {
         //Redirect to an error page, whatever you want if something doesn't work out.
         print '<div style="background-color: tomato; border-bottom: 20px solid teal; border-radius: 5px; color: white; display: inline-block; font-family: sans-serif; margin: 1em; letter-spacing: .025em; line-height: 1.4; max-width: 60ch; padding: .75em 1em;">⚠️';
