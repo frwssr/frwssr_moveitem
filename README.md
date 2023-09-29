@@ -26,7 +26,7 @@ Example: `unsetfields="slug,date,islive|❌"`.
 
 ### Example
 ```html
-<perch:content id="move" type="frwssr_moveitem" label="Move this awesome item" hint="Select target region" moveto="123|news,456|archive" hint="Select target region" styles="linear-gradient(to top right, teal, tomato)" unsetfields="slug,date,islive|❌" help="Beware: The move will be executed ON CHANGE of this field." suppress>
+<perch:content id="move" type="frwssr_moveitem" label="Move this awesome item" moveto="123|news,456|archive" hint="Select target region" styles="background-image: linear-gradient(to top right, teal, tomato)" unsetfields="slug,date,islive|❌" help="Beware: The move will be executed ON CHANGE of this field." suppress>
 ```
 
 ### Notes
